@@ -1,0 +1,31 @@
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: helloworld
+  labels:
+    name: helloworld
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      name: helloworld
+  template:
+    metadata:
+      labels:
+        name: helloworld
+    spec:
+      containers:
+        - image: nginxdemos/hello
+          resources:
+            limits:
+              memory: 32Mi
+              cpu: 1000m
+          name: helloworld
+          ports:
+            - name: http
+              containerPort: 80
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+      restartPolicy: Always
