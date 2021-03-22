@@ -1,4 +1,5 @@
 #!/bin/bash
+terraform init
 terraform apply -auto-approve
 export KUBECONFIG=./kubeconfig_appvia-dns-tls-demo
 kustomize build . | kubectl apply -f -
