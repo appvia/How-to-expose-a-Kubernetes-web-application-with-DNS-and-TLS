@@ -1,0 +1,5 @@
+.terraform
+.terraform*lock*
+terraform.tfstate
+terraform.tfstate.*
+kubeconfig_*
