@@ -434,6 +434,10 @@ metadata:
     kubernetes.io/tls-acme: 'true'
     certmanager.k8s.io/cluster-issuer: letsencrypt-prod
 spec:
+  tls:
+    - hosts:
+        - dns-tls-demo.sa-team.teams.kore.appvia.io
+      secretName: helloworld
   rules:
     - host: dns-tls-demo.sa-team.teams.kore.appvia.io
       http:
@@ -470,3 +474,5 @@ $ curl https://dns-tls-demo.sa-team.teams.kore.appvia.io
 </body>
 </html>
 ```
+
+[insert how kore operate makes this easier]
