@@ -13,7 +13,7 @@ What we're using in this tutorial…
 
 ## Getting started
 
-> You’ll find the accompanying code for this post in github.com/appvia/How-to-expose-a-Kubernetes-web-application-with-DNS-and-TLS
+> You’ll find the accompanying code for this post in [github.com/appvia/How-to-expose-a-Kubernetes-web-application-with-DNS-and-TLS](https://github.com/appvia/How-to-expose-a-Kubernetes-web-application-with-DNS-and-TLS)
 
 We’ll start with a vanilla [Amazon EKS](https://aws.amazon.com/eks/) cluster, we can simplify this with some terraform magic to provide a 3 node cluster
 
