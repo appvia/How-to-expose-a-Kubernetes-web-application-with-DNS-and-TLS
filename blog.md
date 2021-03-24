@@ -2,7 +2,7 @@
 
 A production-ready application needs to be discoverable and accessible over a secure endpoint, and it can be both complex and time consuming to implement a solution that is easy to consume, maintain and scale. This tutorial brings a few tools together to publish your Kubernetes applications securely, and offers up an easier solution to reduce some of these complexities.
 
-TO DO^ Link/make a better, more cohesive argument (WHY) 
+Apart from that [browsers are marking websites that don't use HTTPs as insecure](https://blog.google/products/chrome/milestone-chrome-security-marking-http-not-secure/) which could have a reputational/trust impact on your website/application you might be wondering why you should use HTTPS? We think Cloud Flare's explanation of [Why Use HTTPS?](https://www.cloudflare.com/en-gb/learning/ssl/why-use-https/) is excellent, also Google's [Chrome Dev Summit 2016, Real Talk about HTTPS](https://www.youtube.com/watch?v=iP75a1Y9saY)
 
 What we're using in this tutorial…
 
@@ -17,9 +17,9 @@ What we're using in this tutorial…
 
 > You’ll find the accompanying code for this post in [github.com/appvia/How-to-expose-a-Kubernetes-web-application-with-DNS-and-TLS](https://github.com/appvia/How-to-expose-a-Kubernetes-web-application-with-DNS-and-TLS)
 
-We’ll start with a vanilla [Amazon EKS](https://aws.amazon.com/eks/) cluster, which we can automate with some terraform magic to provide a 3 node cluster. 
+We’ll start with a vanilla [Amazon EKS](https://aws.amazon.com/eks/) cluster, which we can automate with some terraform magic to provide a 3 node cluster.
 
-First, make a main.tf with: 
+First, make a main.tf with:
 
 ```terraform
 // ./main.tf
@@ -70,7 +70,7 @@ provider "kubernetes" {
 }
 ```
 
-Then apply that with terraform: 
+Then apply that with terraform:
 
 ```bash
 $ terraform init
@@ -88,7 +88,7 @@ Terraform will helpfully provide a [kubeconfig](https://kubernetes.io/docs/tasks
 export KUBECONFIG=${PWD}/kubeconfig_appvia-dns-tls-demo
 ```
 
-When you want to get back to your Kubernetes config: 
+When you want to get back to your Kubernetes config:
 
 ```bash
 unset KUBECONFIG
@@ -115,7 +115,7 @@ ip-172-31-31-122.eu-west-2.compute.internal   Ready    <none>   17m   v1.19.6-ek
 ip-172-31-40-85.eu-west-2.compute.internal    Ready    <none>   17m   v1.19.6-eks-49a6c0
 ```
 
-You should see a few pods running and three ready nodes: 
+You should see a few pods running and three ready nodes:
 
 ### [external-dns](https://github.com/kubernetes-sigs/external-dns)
 
@@ -166,7 +166,7 @@ resource "aws_iam_role" "externaldns_route53" {
 }
 ```
 
-Then apply that: 
+Then apply that:
 
 ```bash
 $ terraform apply
@@ -174,7 +174,7 @@ $ terraform apply
 Apply complete! Resources: 1 added, 0 changed, 0 destroyed.
 ```
 
-You'll see that it's bound to a service account called `external-dns` in the `external-dns` [namespace](https://kubernetes.io/docs/tasks/administer-cluster/namespaces/). Now, let's test that all of that works as it should. 
+You'll see that it's bound to a service account called `external-dns` in the `external-dns` [namespace](https://kubernetes.io/docs/tasks/administer-cluster/namespaces/). Now, let's test that all of that works as it should.
 
 First, check the current state:
 
@@ -189,7 +189,7 @@ $ kubectl run -i --restart=Never --image amazon/aws-cli $(uuid) -- sts get-calle
 
 You'll see the `UserId` and `Arn` have have an `i-...` in, which is the node instance (this won't have access to much).
 
-Now, make an `outputs.tf` to provide an easy way to get the AWS account ID: 
+Now, make an `outputs.tf` to provide an easy way to get the AWS account ID:
 
 ```terraform
 // ./output.tf
@@ -200,7 +200,7 @@ output "aws_account_id" {
 }
 ```
 
-Refresh the terraform state and create the namespace and service account: 
+Refresh the terraform state and create the namespace and service account:
 
 ```bash
 $ terraform refresh
@@ -224,9 +224,10 @@ $ kubectl run -i -n external-dns --restart=Never --image amazon/aws-cli $(uuid) 
     "Arn": "arn:aws:sts::123412341234:assumed-role/externaldns_route53/botocore-session-1123456767"
 }
 ```
-TO DO: Explain what this looks like 
 
-Deploy external-dns: 
+Notice how the `Arn` has `assumed-role/externaldns_route53` in it to show that you've successfully assumed the role.
+
+Deploy external-dns:
 
 ```bash
 $ kubectl -n external-dns apply -k "github.com/kubernetes-sigs/external-dns/kustomize?ref=v0.7.6"
@@ -236,7 +237,7 @@ clusterrolebinding.rbac.authorization.k8s.io/external-dns-viewer created
 deployment.apps/external-dns created
 ```
 
-We need to patch the default configuration, so start by creating a `k8s/external-dns/deployment.yaml`: 
+We need to patch the default configuration, so start by creating a `k8s/external-dns/deployment.yaml`:
 
 ```yaml
 # ./k8s/external-dns/deployment.yaml
@@ -258,7 +259,7 @@ spec:
             - --aws-zone-type=public
 ```
 
-Then apply the patch: 
+Then apply the patch:
 
 ```bash
 $ kubectl -n external-dns patch deployments.apps external-dns --patch-file k8s/external-dns/deployment.yaml
@@ -295,7 +296,7 @@ job.batch/ingress-nginx-admission-create created
 job.batch/ingress-nginx-admission-patch created
 ```
 
-This works totally out the box, but you might need to scale the deployment if you want some resilience. Let's go with three replicas for now: 
+This works totally out the box, but you might need to scale the deployment if you want some resilience. Let's go with three replicas for now:
 
 ```bash
 $ kubectl scale -n ingress-nginx --replicas=3 deployment ingress-nginx-controller
@@ -304,9 +305,9 @@ deployment.apps/ingress-nginx-controller scaled
 
 ### [cert-manager](https://cert-manager.io/docs/)
 
-Now we need to deploy [cert-manager](https://cert-manager.io): 
+Now we need to deploy [cert-manager](https://cert-manager.io):
 
-[cert-manager](https://cert-manager.io) is going to handle populating a secret, adjacent to our ingress configuration, with a valid TLS certificate that we're going to configure to come from [Lets Encrypt](https://letsencrypt.org/) using the [ACME protocol](https://tools.ietf.org/html/rfc8555) though [cert-manager](https://cert-manager.io) which supports a number of [different issuer types](https://cert-manager.io/docs/configuration/): 
+[cert-manager](https://cert-manager.io) is going to handle populating a secret, adjacent to our ingress configuration, with a valid TLS certificate that we're going to configure to come from [Lets Encrypt](https://letsencrypt.org/) using the [ACME protocol](https://tools.ietf.org/html/rfc8555) though [cert-manager](https://cert-manager.io) which supports a number of [different issuer types](https://cert-manager.io/docs/configuration/):
 
 ```bash
 $ kubectl apply -f https://github.com/jetstack/cert-manager/releases/download/v1.2.0/cert-manager.yaml
@@ -353,7 +354,7 @@ validatingwebhookconfiguration.admissionregistration.k8s.io/cert-manager-webhook
 
 We need to create a couple of issuers, we're going to use [Lets Encrypt](https://letsencrypt.org/) [HTTP-01](https://letsencrypt.org/docs/challenge-types/#http-01-challenge).
 
-Replace the `user@example.com` with your email address in both issuers, this allows [Lets Encrypt](https://letsencrypt.org/) to send you [email notifications](https://letsencrypt.org/docs/expiration-emails/) if your certificate is due to expire and hasn't been automatically renewed or removed: 
+Replace the `user@example.com` with your email address in both issuers, this allows [Lets Encrypt](https://letsencrypt.org/) to send you [email notifications](https://letsencrypt.org/docs/expiration-emails/) if your certificate is due to expire and hasn't been automatically renewed or removed:
 
 ```yaml
 # ./k8s/cert-manager/issuers.yaml
@@ -397,7 +398,7 @@ clusterissuer.cert-manager.io/letsencrypt-staging created
 
 ## Bringing it all together
 
-TO DO: Explain what this app is and expected behaviour
+We're going to deploy a three replica [simple helloworld application](https://hub.docker.com/r/nginxdemos/hello/) with a Service and an Ingress.
 
 ```yaml
 # ./k8s/myapp.yaml
@@ -471,7 +472,7 @@ spec:
                   name: http
 ```
 
-Change the `dns-tls-demo.sa-team.teams.kore.appvia.io` to something within your zone, in line with what you did in the [external-dns](#external-dns) configuration.
+Change the references to `dns-tls-demo.sa-team.teams.kore.appvia.io` to something within your zone, in line with what you did in the [external-dns](#external-dns) configuration.
 
 This will cause [external-dns](https://github.com/kubernetes-sigs/external-dns) to create a record in your [route53](https://aws.amazon.com/route53/) zone to point to the [ingress-nginx](https://kubernetes.github.io/ingress-nginx/)) controller's [network load balancer](https://aws.amazon.com/elasticloadbalancing/network-load-balancer/) and [cert-manager](https://cert-manager.io/docs/) to retrieve a valid certificate for that.
 
@@ -499,7 +500,7 @@ $ curl https://dns-tls-demo.sa-team.teams.kore.appvia.io
 
 The order you destroy things is **REALLY IMPORTANT** to not leave [orphaned resources](https://docs.aws.amazon.com/eks/latest/userguide/delete-cluster.html) behind that could be costly. For example, if you `terraform destroy` before removing the `ingress` configuration and `ingress-nginx` you'll likely leave behind both a [route53 A record](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/rrsets-working-with.html), which if you're creating and destroying regularly could incur costs if you end up with over `10,000` records (which will happen faster than you think). And also a [Load Balancer](https://aws.amazon.com/elasticloadbalancing/network-load-balancer/) which could cost just under \$30/month.
 
-To do it in order: 
+To do it in order:
 
 ```
 $ kubectl delete ingress --all -A
@@ -510,8 +511,22 @@ $ terraform state rm module.eks.kubernetes_config_map.aws_auth #workaround https
 Removed module.eks.kubernetes_config_map.aws_auth[0]
 Successfully removed 1 resource instance(s).
 $ terraform destroy -force
-unset KUBECONFIG
-
+[...]
+Destroy complete! Resources: 27 destroyed.
+$ unset KUBECONFIG
 ```
-With the amount of effort involved in doing this there are plenty of pitfalls and risks (specifically orphaned resource cost) that will likely mean most teams will end up with a long lived [snowflake setup](https://martinfowler.com/bliki/SnowflakeServer.html) aka a pet, but you thought you were doing devops. 
-Kore Operate manages the complexity of the services that help in securing and exposing applications, in addition to providing a UI to create an ingress API object, making it easy for devs. 
+
+## Conclusion
+
+With the amount of effort involved in doing this there are plenty of pitfalls and risks (specifically orphaned resource cost) that will likely mean most teams will end up with a long lived [snowflake setup](https://martinfowler.com/bliki/SnowflakeServer.html) aka a pet, but you thought you were doing devops.
+[Kore Operate](https://www.appvia.io/kore-operate) manages the complexity of the services that help in securing and exposing applications, in addition to providing a UI to create an ingress API object, making it easy for devs.
+
+---
+
+## References
+
+- https://blog.atomist.com/kubernetes-ingress-nginx-cert-manager-external-dns/
+- https://github.com/kubernetes-sigs/external-dns/tree/master/docs/tutorials
+- https://medium.com/asl19-developers/use-lets-encrypt-cert-manager-and-external-dns-to-publish-your-kubernetes-apps-to-your-website-ff31e4e3badf
+- https://github.com/kubernetes/ingress-nginx/tree/master/docs/user-guide
+- https://github.com/appvia/kore-app-example
