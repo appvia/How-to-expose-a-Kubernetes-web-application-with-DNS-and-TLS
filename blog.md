@@ -4,16 +4,18 @@ A production-ready application needs to be discoverable and accessible over a se
 
 What we're using in this tutorial…
 
-- Amazon EKS cluster
-- Nginx Ingress Controller
-- Cert-manager
-- external-dns
+- [Amazon EKS cluster](https://aws.amazon.com/eks/)
+- [Nginx Ingress Controller](https://kubernetes.github.io/ingress-nginx/)
+- [cert-manager](https://cert-manager.io/docs/)
+- [external-dns](https://github.com/kubernetes-sigs/external-dns)
+- [Amazon route53](https://aws.amazon.com/route53/)
+- [Amazon Elastic Network Load Balancer](https://aws.amazon.com/elasticloadbalancing/network-load-balancer/)
 
 ## Getting started
 
-We’ll start with a vanilla [Amazon EKS](https://aws.amazon.com/eks/) cluster, we can simplify this with some terraform magic to provide a 3 node cluster
+> You’ll find the accompanying code for this post in github.com/appvia/How-to-expose-a-Kubernetes-web-application-with-DNS-and-TLS
 
-You’ll find the accompanying code for this post in github.com/appvia/How-to-expose-a-Kubernetes-web-application-with-DNS-and-TLS
+We’ll start with a vanilla [Amazon EKS](https://aws.amazon.com/eks/) cluster, we can simplify this with some terraform magic to provide a 3 node cluster
 
 Make a main.tf with
 
@@ -78,7 +80,7 @@ $ terraform apply
 Apply complete! Resources: 27 added, 0 changed, 0 destroyed.
 ```
 
-Terraform will provide a [kubeconfig](https://kubernetes.io/docs/tasks/access-application-cluster/configure-access-multiple-clusters/) file for you to use with kubectl, you can set that to be used for your terminal session:
+Terraform will helpfully provide a [kubeconfig](https://kubernetes.io/docs/tasks/access-application-cluster/configure-access-multiple-clusters/) file for you to use with kubectl, you can set that to be used for your terminal session without effecting any other configuration you have setup. By default its named based on the cluster name, so in the case of our example it is `./kubeconfig_appvia-dns-tls-demo`
 
 ```bash
 export KUBECONFIG=${PWD}/kubeconfig_appvia-dns-tls-demo
@@ -113,11 +115,11 @@ ip-172-31-40-85.eu-west-2.compute.internal    Ready    <none>   17m   v1.19.6-ek
 
 You should see a few pods running, and three ready nodes
 
-### external-dns
+### [external-dns](https://github.com/kubernetes-sigs/external-dns)
 
-We're going to use external-dns to configure a route53 zone for you, external-dns assumes that you've already got a hosted zone in your account that you can use, mine is setup for `sa-team.teams.kore.appvia.io` meaning I can publically resolve `anything.sa-team.teams.kore.appvia.io`.
+We're going to use [external-dns](https://github.com/kubernetes-sigs/external-dns) to configure a [route53](https://aws.amazon.com/route53/) zone for you, [external-dns](https://github.com/kubernetes-sigs/external-dns) assumes that you've already got a hosted zone in your account that you can use, mine is setup for `sa-team.teams.kore.appvia.io` meaning I can publicly resolve `anything.sa-team.teams.kore.appvia.io`.
 
-To let external-dns do that, we need to give it the ability to make changes to the route53 zone, we can do that with an [IAM role](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles.html) and attach that to a [service account](https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/).
+To let [external-dns](https://github.com/kubernetes-sigs/external-dns) do that, we need to give it the ability to make changes to the [route53](https://aws.amazon.com/route53/) zone, we can do that with an [IAM role](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles.html) and attach that to a [service account](https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/).
 
 ```terraform
 // ./iam_roles.tf
@@ -260,9 +262,13 @@ $ kubectl -n external-dns patch deployments.apps external-dns --patch-file k8s/e
 deployment.apps/external-dns patched
 ```
 
-### ingress-nginx
+The configuration above will set [external-dns](https://github.com/kubernetes-sigs/external-dns) to look for hostnames in the ingress configuration and create a record for them that points to the ingress controller's load balancer.
 
-Next let's deploy ingress-nginx
+### [ingress-nginx](https://kubernetes.github.io/ingress-nginx/)
+
+We're going to use [ingress-nginx](https://kubernetes.github.io/ingress-nginx/), to get us going, other ingress options are available, you may need to consider other options depending on your specific needs; see [Comparison of Kubernetes Ingress controllers](https://docs.google.com/spreadsheets/d/191WWNpjJ2za6-nbG4ZoUMXMpUK8KlCIosvQB0f-oq3k/)
+
+So let's deploy [ingress-nginx](https://kubernetes.github.io/ingress-nginx/), this configuration is setup to request a [Amazon Elastic Network Load Balancer](https://aws.amazon.com/elasticloadbalancing/network-load-balancer/) and attach it to the ingress controller.
 
 ```bash
 $ kubectl apply -k "github.com/kubernetes/ingress-nginx.git/deploy/static/provider/aws?ref=controller-v0.44.0"
@@ -286,9 +292,18 @@ job.batch/ingress-nginx-admission-create created
 job.batch/ingress-nginx-admission-patch created
 ```
 
-### cert-manager
+This works totally out the box, you may need to scale the deployment if you want some resilience, lets go with three replicas for now
 
-Now we need to deploy cert-manager
+```bash
+$ kubectl scale -n ingress-nginx --replicas=3 deployment ingress-nginx-controller
+deployment.apps/ingress-nginx-controller scaled
+```
+
+### [cert-manager](https://cert-manager.io/docs/)
+
+Now we need to deploy [cert-manager](https://cert-manager.io)
+
+[cert-manager](https://cert-manager.io) is going to handle populating a secret adjacent to our ingress configuration with a valid TLS certificate that we're going to configure to come from [Lets Encrypt](https://letsencrypt.org/) using the [ACME protocol](https://tools.ietf.org/html/rfc8555) though [cert-manager](https://cert-manager.io) does support a number of [different issuer types](https://cert-manager.io/docs/configuration/)
 
 ```bash
 $ kubectl apply -f https://github.com/jetstack/cert-manager/releases/download/v1.2.0/cert-manager.yaml
@@ -333,9 +348,9 @@ mutatingwebhookconfiguration.admissionregistration.k8s.io/cert-manager-webhook c
 validatingwebhookconfiguration.admissionregistration.k8s.io/cert-manager-webhook created
 ```
 
-We need to create a couple of issuers, we're going to use [Lets Encrypt](https://letsencrypt.org/) [HTTP-01](https://letsencrypt.org/docs/challenge-types/#http-01-challenge)
+We need to create a couple of issuers, we're going to use [Lets Encrypt](https://letsencrypt.org/) [HTTP-01](https://letsencrypt.org/docs/challenge-types/#http-01-challenge).
 
-Replace the `user@example.com` with your email address.
+Replace the `user@example.com` with your email address in both issuers, this allows [Lets Encrypt](https://letsencrypt.org/) to send you [email notifications](https://letsencrypt.org/docs/expiration-emails/) if your certificate is due to expire and hasn't been automatically renewed or removed
 
 ```yaml
 # ./k8s/cert-manager/issuers.yaml
@@ -451,9 +466,9 @@ spec:
                   name: http
 ```
 
-Change the `dns-tls-demo.sa-team.teams.kore.appvia.io` to something within your hostname in line with what you did in the [external-dns](#external-dns) configuration.
+Change the `dns-tls-demo.sa-team.teams.kore.appvia.io` to something within your zone in line with what you did in the [external-dns](#external-dns) configuration.
 
-This will cause external-dns to create an external [network load balancer](https://aws.amazon.com/elasticloadbalancing/network-load-balancer/) and cert-manager to get a staging certificate.
+This will cause [external-dns](https://github.com/kubernetes-sigs/external-dns) to create a record in your [route53](https://aws.amazon.com/route53/) zone to point to the [ingress-nginx](https://kubernetes.github.io/ingress-nginx/)) controller's [network load balancer](https://aws.amazon.com/elasticloadbalancing/network-load-balancer/) and [cert-manager](https://cert-manager.io/docs/) to retrieve a valid certificate for that.
 
 You can test this all with:
 
@@ -473,6 +488,23 @@ $ curl https://dns-tls-demo.sa-team.teams.kore.appvia.io
 [...]
 </body>
 </html>
+```
+
+## Tear down
+
+The order you destroy things is **REALLY IMPORTANT** to not leave [orphaned resources](https://docs.aws.amazon.com/eks/latest/userguide/delete-cluster.html) behind that could be costly; for example if you `terraform destroy` before removing the `ingress` configuration and `ingress-nginx` you will likely leave behind both a [route53 A record](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/rrsets-working-with.html), which if you're creating and destroying regularly could incur costs if you end up with over `10,000` records (which will happen faster than you think). And also a [Load Balancer](https://aws.amazon.com/elasticloadbalancing/network-load-balancer/) which could cost just under \$30/month.
+
+```
+$ kubectl delete ingress --all -A
+ingress.extensions "helloworld" deleted
+$ kubectl delete namespaces ingress-nginx
+namespace "ingress-nginx" deleted
+$ terraform state rm module.eks.kubernetes_config_map.aws_auth #workaround https://github.com/terraform-aws-modules/terraform-aws-eks/issues/1162
+Removed module.eks.kubernetes_config_map.aws_auth[0]
+Successfully removed 1 resource instance(s).
+$ terraform destroy -force
+unset KUBECONFIG
+
 ```
 
 [insert how kore operate makes this easier]
