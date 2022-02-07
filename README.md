@@ -1,6 +1,6 @@
 # EKS + ingress + dns + tls(le http01)
 
-> Accompanying content for this blog post [How to expose a Kubernetes web application with DNS and TLS](#) _@TODO LINK TBC_
+> Accompanying content for this blog post [How to expose a Kubernetes web application with DNS and TLS](https://www.appvia.io/blog/expose-kubernetes-service-eks-dns-tls)
 
 Simple example of deploying:
 
