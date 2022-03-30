@@ -12,6 +12,7 @@ data "aws_subnet_ids" "default" {
 module "eks" {
   source           = "terraform-aws-modules/eks/aws"
   cluster_name     = "appvia-dns-tls-demo"
+  version          = "15.0.0"
   cluster_version  = "1.19"
   subnets          = data.aws_subnet_ids.default.ids
   write_kubeconfig = true
